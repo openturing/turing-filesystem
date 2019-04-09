@@ -1,0 +1,57 @@
+buildscript {
+	repositories {
+		mavenCentral()
+		 jcenter()
+	}
+	dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:4.0.4'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'com.github.johnrengelman.shadow'
+
+group = 'com.viglet.turing.filesystem'
+version = '1.0-SNAPSHOT'
+
+description = "turing-filesystem"
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+tasks.withType(JavaCompile) {
+	options.encoding = 'UTF-8'
+}
+
+jar {
+    baseName = 'turing-filesystem'
+    version =  '0.1.0'
+}
+
+shadowJar {
+   baseName = 'turing-filesystem'
+   classifier = null
+   version = 'fat-jar'
+}
+repositories {   
+     mavenCentral()
+}
+
+dependencies {
+	compile group: 'com.beust', name: 'jcommander', version: '1.72'	
+	compile group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.9.8'	
+	compile group: 'org.json', name: 'json', version:'20140107'
+	compile group: 'org.apache.httpcomponents', name: 'httpclient', version:'4.5.2'
+	compile group: 'org.apache.logging.log4j', name: 'log4j-core', version:'2.7'
+	
+	// Tika
+    compile group: 'org.apache.tika', name: 'tika-core', version:'1.5'
+    compile group: 'org.apache.tika', name: 'tika-parsers', version:'1.5'
+    
+    // Commons
+    compile group: 'commons-io', name: 'commons-io', version: '2.6'
+    
+	
+}
+
