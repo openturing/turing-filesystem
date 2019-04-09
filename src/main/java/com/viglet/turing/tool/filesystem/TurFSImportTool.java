@@ -110,8 +110,8 @@ public class TurFSImportTool {
 						@Override
 						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {							
 							System.out.println(file.toAbsolutePath().toString());
-						//	TurFileAttributes turFileAttributes = readFile(file.toAbsolutePath().toString());
-						//	System.out.println(turFileAttributes.getContent());
+							TurFileAttributes turFileAttributes = readFile(file.toAbsolutePath().toString());
+							System.out.println(cleanTextContent(turFileAttributes.getContent()));
 							return FileVisitResult.CONTINUE;
 						}
 					});
@@ -122,6 +122,20 @@ public class TurFSImportTool {
 		this.select();
 	}
 
+	 private static String cleanTextContent(String text)
+	    {
+	        // strips off all non-ASCII characters
+	        text = text.replaceAll("[^\\x00-\\x7F]", "");
+	 
+	        // erases all the ASCII control characters
+	        text = text.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "");
+	         
+	        // removes non-printable characters from Unicode
+	        text = text.replaceAll("\\p{C}", "");
+	 
+	        return text.trim();
+	    }
+	 
 	private TurFileAttributes readFile(String filePath) {
 
 		try {
