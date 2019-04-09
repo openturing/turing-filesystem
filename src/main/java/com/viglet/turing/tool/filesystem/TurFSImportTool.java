@@ -7,30 +7,21 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.TimeZone;
+import java.nio.file.FileVisitOption;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.EnumSet;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.viglet.turing.api.sn.job.TurSNJobAction;
-import com.viglet.turing.api.sn.job.TurSNJobItem;
 import com.viglet.turing.api.sn.job.TurSNJobItems;
 import com.viglet.turing.tool.file.TurFileAttributes;
-import com.viglet.turing.tool.filesystem.format.TurFormatValue;
 
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -49,15 +40,6 @@ import org.xml.sax.SAXException;
 
 public class TurFSImportTool {
 	static final Logger logger = LogManager.getLogger(TurFSImportTool.class.getName());
-
-	@Parameter(names = { "--driver", "-d" }, description = "Manually specify JDBC driver class to use", required = true)
-	private String driver = null;
-
-	@Parameter(names = { "--connect", "-c" }, description = "Specify JDBC connect string", required = true)
-	private String connect = null;
-
-	@Parameter(names = { "--query", "-q" }, description = "Import the results of statement", required = true)
-	private String query = null;
 
 	@Parameter(names = { "--site" }, description = "Specify the Semantic Navigation Site", required = true)
 	private String site = null;
@@ -80,15 +62,6 @@ public class TurFSImportTool {
 	@Parameter(names = { "--include-type-in-id", "-i" }, description = "Include Content Type name in Id", arity = 1)
 	public boolean typeInId = false;
 
-	@Parameter(names = { "--multi-valued-separator" }, description = "Multi Valued Separator")
-	private String mvSeparator = ",";
-
-	@Parameter(names = { "--multi-valued-field" }, description = "Multi Valued Fields")
-	private String mvField = "";
-
-	@Parameter(names = { "--remove-html-tags-field" }, description = "Remove HTML Tags into content of field")
-	public String htmlField = "";
-
 	@Parameter(names = "--file-path-field", description = "Field with File Path", help = true)
 	private String filePathField = null;
 
@@ -98,9 +71,6 @@ public class TurFSImportTool {
 	@Parameter(names = "--file-size-field", description = "Field that shows Size of File in bytes", help = true)
 	private String fileSizeField = null;
 
-	@Parameter(names = "--class-name", description = "Customized Class to modified rows", help = true)
-	private String customClassName = null;
-
 	@Parameter(names = { "--show-output", "-o" }, description = "Show Output", arity = 1)
 	public boolean showOutput = false;
 
@@ -109,8 +79,6 @@ public class TurFSImportTool {
 
 	@Parameter(names = "--help", description = "Print usage instructions", help = true)
 	private boolean help = false;
-
-	private static TurFormatValue turFormatValue = null;
 
 	public static void main(String... argv) {
 
@@ -123,7 +91,6 @@ public class TurFSImportTool {
 				return;
 			}
 			System.out.println("Viglet Turing Filesystem Import Tool.");
-			turFormatValue = new TurFormatValue(main);
 			main.run();
 		} catch (ParameterException e) {
 			// Handle everything on your own, i.e.
@@ -134,10 +101,22 @@ public class TurFSImportTool {
 	}
 
 	public void run() {
-		logger.info(String.format("driver: %s", driver));
-		logger.info(String.format("connect: %s", connect));
-		logger.info(String.format("query: %s", query));
-		logger.info(String.format("username: %s", username));
+		Path startPath = Paths.get("\\CallGuidesTXT\\");
+
+		try {
+			Files.walkFileTree(startPath, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
+					new SimpleFileVisitor<Path>() {
+						@Override
+						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+							String firstLine = Files
+									.newBufferedReader((java.nio.file.Path) file, Charset.defaultCharset()).readLine();
+							System.out.println(firstLine);
+							return FileVisitResult.CONTINUE;
+						}
+					});
+		} catch (IOException ioe) {
+			logger.error(ioe);
+		}
 
 		this.select();
 	}
@@ -176,29 +155,13 @@ public class TurFSImportTool {
 	}
 
 	public void select() {
-		Connection conn = null;
-		Statement stmt = null;
 
 		try {
-			// Register JDBC driver
-			Class.forName(driver);
 
-			// Open a connection
-			logger.info("Connecting to database...");
-			conn = DriverManager.getConnection(connect, username, password);
-
-			// Execute a query
-			logger.info("Creating statement...");
-			stmt = conn.createStatement();
-			String sql;
-			sql = query;
-			ResultSet rs = stmt.executeQuery(sql);
-
-			// Extract data from result set
 			int chunkCurrent = 0;
 			int chunkTotal = 0;
 			TurSNJobItems turSNJobItems = new TurSNJobItems();
-
+/*
 			while (rs.next()) {
 				TurSNJobItem turSNJobItem = new TurSNJobItem();
 				turSNJobItem.setTurSNJobAction(TurSNJobAction.CREATE);
@@ -245,27 +208,6 @@ public class TurFSImportTool {
 						logger.info("turFileAttributes is null: " + filePathField);
 				}
 
-				// MultiValue
-				String[] strMvFields = mvField.toLowerCase().split(",");
-				for (Entry<String, Object> atribute : attributes.entrySet()) {
-					String attributeName = atribute.getKey();
-					String attributeValue = (String) atribute.getValue();
-					for (String strMvField : strMvFields) {
-						if (attributeName.toLowerCase().equals(strMvField.toLowerCase())) {
-							if (attributeValue != null) {
-								String[] mvValues = attributeValue.split(mvSeparator);
-								List<String> multiValueList = new ArrayList<String>();
-
-								for (String mvValue : mvValues) {
-									multiValueList.add(turFormatValue.format(attributeName, mvValue));
-
-								}
-								attributes.put(attributeName, multiValueList);
-							}
-						}
-					}
-				}
-
 				turSNJobItem.setAttributes(attributes);
 
 				turSNJobItems.add(turSNJobItem);
@@ -278,36 +220,18 @@ public class TurFSImportTool {
 					chunkCurrent = 0;
 				}
 			}
+			*/
 			if (chunkCurrent > 0) {
 
 				this.sendServer(turSNJobItems, chunkTotal);
 				turSNJobItems = new TurSNJobItems();
 				chunkCurrent = 0;
 			}
-			// STEP 6: Clean-up environment
-			rs.close();
-			stmt.close();
-			conn.close();
-		} catch (SQLException se) {
-			// Handle errors for JDBC
-			se.printStackTrace();
+	
 		} catch (Exception e) {
 			// Handle errors for Class.forName
 			e.printStackTrace();
-		} finally {
-			// finally block used to close resources
-			try {
-				if (stmt != null)
-					stmt.close();
-			} catch (SQLException se2) {
-			} // nothing we can do
-			try {
-				if (conn != null)
-					conn.close();
-			} catch (SQLException se) {
-				se.printStackTrace();
-			} // end finally try
-		} // end try
+		}
 	}
 
 	public void sendServer(TurSNJobItems turSNJobItems, int chunkTotal) throws ClientProtocolException, IOException {
