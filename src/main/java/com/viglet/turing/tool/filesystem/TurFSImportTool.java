@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
@@ -40,7 +41,10 @@ import org.xml.sax.SAXException;
 
 public class TurFSImportTool {
 	static final Logger logger = LogManager.getLogger(TurFSImportTool.class.getName());
-
+	
+	@Parameter(names = "--file-path", description = "Field with File Path", help = true)
+	private String filePath = null;
+	
 	@Parameter(names = { "--site" }, description = "Specify the Semantic Navigation Site", required = true)
 	private String site = null;
 
@@ -61,9 +65,6 @@ public class TurFSImportTool {
 
 	@Parameter(names = { "--include-type-in-id", "-i" }, description = "Include Content Type name in Id", arity = 1)
 	public boolean typeInId = false;
-
-	@Parameter(names = "--file-path-field", description = "Field with File Path", help = true)
-	private String filePathField = null;
 
 	@Parameter(names = "--file-content-field", description = "Field that shows Content of File", help = true)
 	private String fileContentField = null;
@@ -101,16 +102,16 @@ public class TurFSImportTool {
 	}
 
 	public void run() {
-		Path startPath = Paths.get("\\CallGuidesTXT\\");
+		Path startPath = Paths.get(filePath);
 
 		try {
 			Files.walkFileTree(startPath, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
 					new SimpleFileVisitor<Path>() {
 						@Override
-						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-							String firstLine = Files
-									.newBufferedReader((java.nio.file.Path) file, Charset.defaultCharset()).readLine();
-							System.out.println(firstLine);
+						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {							
+							System.out.println(file.toAbsolutePath().toString());
+						//	TurFileAttributes turFileAttributes = readFile(file.toAbsolutePath().toString());
+						//	System.out.println(turFileAttributes.getContent());
 							return FileVisitResult.CONTINUE;
 						}
 					});
@@ -229,8 +230,7 @@ public class TurFSImportTool {
 			}
 	
 		} catch (Exception e) {
-			// Handle errors for Class.forName
-			e.printStackTrace();
+			logger.error(e);
 		}
 	}
 
