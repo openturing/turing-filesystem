@@ -1,10 +1,13 @@
 package com.viglet.turing.tool.filesystem;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
@@ -15,15 +18,26 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.viglet.turing.api.sn.job.TurSNJobAction;
+import com.viglet.turing.api.sn.job.TurSNJobItem;
 import com.viglet.turing.api.sn.job.TurSNJobItems;
 import com.viglet.turing.tool.file.TurFileAttributes;
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -41,21 +55,26 @@ import org.xml.sax.SAXException;
 
 public class TurFSImportTool {
 	static final Logger logger = LogManager.getLogger(TurFSImportTool.class.getName());
-	
-	@Parameter(names = "--file-path", description = "Field with File Path", help = true)
+
+	private final static String EOL = " ";
+	int chunkCurrent = 0;
+	int chunkTotal = 0;
+	TurSNJobItems turSNJobItems = new TurSNJobItems();
+
+	@Parameter(names = "--file-path", description = "Field with File Path", required = true)
 	private String filePath = null;
-	
+
+	@Parameter(names = "--prefix-from-replace", description = "Prefix from Replace", required = true)
+	private String prefixFromReplace = null;
+
+	@Parameter(names = "--prefix-to-replace", description = "Prefix to Replace", required = true)
+	private String prefixToReplace = null;
+
 	@Parameter(names = { "--site" }, description = "Specify the Semantic Navigation Site", required = true)
 	private String site = null;
 
-	@Parameter(names = { "--server", "-s" }, description = "Viglet Turing Server")
+	@Parameter(names = { "--server", "-s" }, description = "Viglet Turing Server", required = true)
 	private String turingServer = "http://localhost:2700";
-
-	@Parameter(names = { "--username", "-u" }, description = "Set authentication username")
-	private String username = null;
-
-	@Parameter(names = { "--password", "-p" }, description = "Set authentication password")
-	private String password = null;
 
 	@Parameter(names = { "--type", "-t" }, description = "Set Content Type name")
 	public String type = "CONTENT_TYPE";
@@ -67,10 +86,10 @@ public class TurFSImportTool {
 	public boolean typeInId = false;
 
 	@Parameter(names = "--file-content-field", description = "Field that shows Content of File", help = true)
-	private String fileContentField = null;
+	private String fileContentField = "text";
 
 	@Parameter(names = "--file-size-field", description = "Field that shows Size of File in bytes", help = true)
-	private String fileSizeField = null;
+	private String fileSizeField = "fileSize";
 
 	@Parameter(names = { "--show-output", "-o" }, description = "Show Output", arity = 1)
 	public boolean showOutput = false;
@@ -105,37 +124,84 @@ public class TurFSImportTool {
 		Path startPath = Paths.get(filePath);
 
 		try {
+
 			Files.walkFileTree(startPath, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
 					new SimpleFileVisitor<Path>() {
 						@Override
-						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {							
-							System.out.println(file.toAbsolutePath().toString());
-							TurFileAttributes turFileAttributes = readFile(file.toAbsolutePath().toString());
-							System.out.println(cleanTextContent(turFileAttributes.getContent()));
+						public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
+							File file = new File(path.toAbsolutePath().toString());
+							TurSNJobItem turSNJobItem = new TurSNJobItem();
+							turSNJobItem.setTurSNJobAction(TurSNJobAction.CREATE);
+							Map<String, Object> attributes = new HashMap<String, Object>();
+
+							List<String> imagesExtensions = new ArrayList<String>(
+									Arrays.asList("bmp", "pnm", "png", "jfif", "jpg", "jpeg", "tiff"));
+
+							String extension = FilenameUtils.getExtension(file.getAbsolutePath()).toLowerCase();
+
+							String content = imagesExtensions.contains(extension) ? extractTextFromImage(file)
+									: extractTextFromFile(file);
+							TimeZone tz = TimeZone.getTimeZone("UTC");
+							DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+							df.setTimeZone(tz);
+							String fileURL = file.getAbsolutePath();
+							if (prefixFromReplace != null && prefixToReplace != null)
+								fileURL = fileURL.replace(prefixFromReplace, prefixToReplace);
+							if (typeInId)
+								attributes.put("id", type + fileURL);
+							else
+								attributes.put("id", fileURL);
+							attributes.put("date", df.format(file.lastModified()));
+							attributes.put("title", file.getName());
+							attributes.put("type", type);
+							if (fileContentField != null)
+								attributes.put(fileContentField, content);
+							if (imagesExtensions.contains(extension))
+								attributes.put("image", fileURL);
+							if (fileSizeField != null)
+								attributes.put(fileSizeField, file.length());
+							attributes.put("url", fileURL);
+							turSNJobItem.setAttributes(attributes);
+
+							turSNJobItems.add(turSNJobItem);
+
+							chunkTotal++;
+							chunkCurrent++;
+							if (chunkCurrent == chunk) {
+								sendServer(turSNJobItems, chunkTotal);
+								turSNJobItems = new TurSNJobItems();
+								chunkCurrent = 0;
+
+							}
 							return FileVisitResult.CONTINUE;
 						}
 					});
+
+			if (chunkCurrent > 0) {
+
+				this.sendServer(turSNJobItems, chunkTotal);
+				turSNJobItems = new TurSNJobItems();
+				chunkCurrent = 0;
+			}
 		} catch (IOException ioe) {
 			logger.error(ioe);
 		}
 
-		this.select();
 	}
 
-	 private static String cleanTextContent(String text)
-	    {
-	        // strips off all non-ASCII characters
-	        text = text.replaceAll("[^\\x00-\\x7F]", "");
-	 
-	        // erases all the ASCII control characters
-	        text = text.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "");
-	         
-	        // removes non-printable characters from Unicode
-	        text = text.replaceAll("\\p{C}", "");
-	 
-	        return text.trim();
-	    }
-	 
+	private static String cleanTextContent(String text) {
+		// strips off all non-ASCII characters
+		text = text.replaceAll("[^\\x00-\\x7F]", "");
+
+		// erases all the ASCII control characters
+		text = text.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ");
+
+		// removes non-printable characters from Unicode
+		text = text.replaceAll("\\p{C}", "");
+
+		return text.trim();
+	}
+
 	private TurFileAttributes readFile(String filePath) {
 
 		try {
@@ -167,85 +233,6 @@ public class TurFSImportTool {
 
 		return null;
 
-	}
-
-	public void select() {
-
-		try {
-
-			int chunkCurrent = 0;
-			int chunkTotal = 0;
-			TurSNJobItems turSNJobItems = new TurSNJobItems();
-/*
-			while (rs.next()) {
-				TurSNJobItem turSNJobItem = new TurSNJobItem();
-				turSNJobItem.setTurSNJobAction(TurSNJobAction.CREATE);
-				Map<String, Object> attributes = new HashMap<String, Object>();
-
-				ResultSetMetaData rsmd = rs.getMetaData();
-
-				// Retrieve by column name
-				for (int c = 1; c <= rsmd.getColumnCount(); c++) {
-					String nameSensitve = rsmd.getColumnLabel(c);
-					String className = rsmd.getColumnClassName(c);
-
-					if (className.equals("java.lang.Integer")) {
-						int intValue = rs.getInt(c);
-						attributes.put(nameSensitve, turFormatValue.format(nameSensitve, Integer.toString(intValue)));
-					} else if (className.equals("java.sql.Timestamp")) {
-						TimeZone tz = TimeZone.getTimeZone("UTC");
-						DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-						df.setTimeZone(tz);
-						attributes.put(nameSensitve, turFormatValue.format(nameSensitve, df.format(rs.getDate(c))));
-					} else {
-						String strValue = rs.getString(c);
-						attributes.put(nameSensitve, turFormatValue.format(nameSensitve, strValue));
-					}
-				}
-				attributes.put("type", type);
-
-				if (filePathField != null && attributes.containsKey(filePathField)) {
-					TurFileAttributes turFileAttributes = this.readFile((String) attributes.get(filePathField));
-					if (turFileAttributes != null) {
-						if (fileSizeField != null && turFileAttributes.getFile() != null) {
-							attributes.put(fileSizeField, turFileAttributes.getFile().length());
-						} else {
-							logger.info("File without size: " + filePathField);
-						}
-
-						if (fileContentField != null) {
-							attributes.put(fileContentField, turFileAttributes.getContent());
-						} else {
-							logger.info("File without content: " + filePathField);
-						}
-
-					} else
-						logger.info("turFileAttributes is null: " + filePathField);
-				}
-
-				turSNJobItem.setAttributes(attributes);
-
-				turSNJobItems.add(turSNJobItem);
-
-				chunkTotal++;
-				chunkCurrent++;
-				if (chunkCurrent == chunk) {
-					this.sendServer(turSNJobItems, chunkTotal);
-					turSNJobItems = new TurSNJobItems();
-					chunkCurrent = 0;
-				}
-			}
-			*/
-			if (chunkCurrent > 0) {
-
-				this.sendServer(turSNJobItems, chunkTotal);
-				turSNJobItems = new TurSNJobItems();
-				chunkCurrent = 0;
-			}
-	
-		} catch (Exception e) {
-			logger.error(e);
-		}
 	}
 
 	public void sendServer(TurSNJobItems turSNJobItems, int chunkTotal) throws ClientProtocolException, IOException {
@@ -286,5 +273,59 @@ public class TurFSImportTool {
 		CloseableHttpResponse response = client.execute(httpPost);
 
 		client.close();
+	}
+
+	private String extractTextFromFile(File file) {
+		TurFileAttributes turFileAttributes = readFile(file.getAbsolutePath());
+		return cleanTextContent(turFileAttributes.getContent());
+	}
+
+	private String extractTextFromImage(File file)
+			throws IOException, UnsupportedEncodingException, FileNotFoundException {
+		StringBuffer strB = new StringBuffer();
+		File outputFile = new File("/tmp/turing-filesystem-image");
+
+		List<String> cmd = new ArrayList<String>();
+		cmd.add("/usr/local/bin/tesseract");
+		cmd.add(file.getName());
+		cmd.add(outputFile.getAbsoluteFile().toString());
+
+		ProcessBuilder pb = new ProcessBuilder();
+		pb.directory(file.getParentFile());
+		pb.command(cmd);
+
+		pb.redirectErrorStream(true);
+		Process process = pb.start();
+
+		int w;
+		try {
+			w = process.waitFor();
+
+			if (w == 0) {
+				BufferedReader in = new BufferedReader(
+						new InputStreamReader(new FileInputStream(outputFile.getAbsolutePath() + ".txt"), "UTF-8"));
+				String str;
+				while ((str = in.readLine()) != null) {
+					strB.append(str).append(EOL);
+				}
+				in.close();
+			} else {
+				String msg = "";
+				BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+				String line = null;
+				while ((line = bufferedReader.readLine()) != null) {
+					msg += line;
+				}
+				System.out.println(msg);
+				bufferedReader.close();
+				throw new RuntimeException(msg);
+			}
+
+			new File(outputFile.getAbsolutePath() + ".txt").delete();
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return cleanTextContent(strB.toString());
 	}
 }
