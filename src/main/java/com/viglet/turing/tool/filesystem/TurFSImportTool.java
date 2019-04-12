@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -46,6 +47,9 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.poi.ooxml.POIXMLProperties;
+import org.apache.poi.util.IOUtils;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
@@ -279,8 +283,37 @@ public class TurFSImportTool {
 
 	private String extractTextFromFile(File file) {
 		TurFileAttributes turFileAttributes = readFile(file.getAbsolutePath());
-		return cleanTextContent(turFileAttributes.getContent());
-		// return turFileAttributes.getContent();
+		String extension = FilenameUtils.getExtension(file.getAbsolutePath()).toLowerCase();
+		if (extension.equals("docx")) {
+			XWPFDocument wordDocument = null;
+			try {
+				wordDocument = new XWPFDocument(new FileInputStream(file.getAbsolutePath()));
+
+				POIXMLProperties props = wordDocument.getProperties();
+
+				String thumbnail = props.getThumbnailFilename();
+				if (thumbnail == null) {
+					// No thumbnail
+				} else {
+					FileOutputStream fos;
+					fos = new FileOutputStream("/tmp/" + thumbnail);
+					IOUtils.copy(props.getThumbnailImage(), fos);
+				}
+				return cleanTextContent(turFileAttributes.getContent());
+			} catch (FileNotFoundException e1) {
+				e1.printStackTrace();
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			} finally {
+				try {
+					wordDocument.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		return null;
 	}
 
 	private String extractTextFromImage(File file)
