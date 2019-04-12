@@ -91,6 +91,9 @@ public class TurFSImportTool {
 	@Parameter(names = "--file-size-field", description = "Field that shows Size of File in bytes", help = true)
 	private String fileSizeField = "fileSize";
 
+	@Parameter(names = "--file-extension-field", description = "Field that shows extension of File", help = true)
+	private String fileExtensionField = "fileExtension";
+
 	@Parameter(names = { "--show-output", "-o" }, description = "Show Output", arity = 1)
 	public boolean showOutput = false;
 
@@ -136,42 +139,46 @@ public class TurFSImportTool {
 
 							List<String> imagesExtensions = new ArrayList<String>(
 									Arrays.asList("bmp", "pnm", "png", "jfif", "jpg", "jpeg", "tiff"));
-
+							List<String> webImagesExtensions = new ArrayList<String>(
+									Arrays.asList("pnm", "png", "jpg", "jpeg", "gif"));
 							String extension = FilenameUtils.getExtension(file.getAbsolutePath()).toLowerCase();
+							if (!extension.equals("ds_store")) {
+								String content = imagesExtensions.contains(extension) ? extractTextFromImage(file)
+										: extractTextFromFile(file);
+								TimeZone tz = TimeZone.getTimeZone("UTC");
+								DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+								df.setTimeZone(tz);
+								String fileURL = file.getAbsolutePath();
+								if (prefixFromReplace != null && prefixToReplace != null)
+									fileURL = fileURL.replace(prefixFromReplace, prefixToReplace);
+								if (typeInId)
+									attributes.put("id", type + fileURL);
+								else
+									attributes.put("id", fileURL);
+								attributes.put("date", df.format(file.lastModified()));
+								attributes.put("title", file.getName());
+								attributes.put("type", type);
+								if (fileContentField != null)
+									attributes.put(fileContentField, content);
+								if (webImagesExtensions.contains(extension))
+									attributes.put("image", fileURL);
+								if (fileExtensionField != null)
+									attributes.put(fileExtensionField, extension);
+								if (fileSizeField != null)
+									attributes.put(fileSizeField, file.length());
+								attributes.put("url", fileURL);
+								turSNJobItem.setAttributes(attributes);
 
-							String content = imagesExtensions.contains(extension) ? extractTextFromImage(file)
-									: extractTextFromFile(file);
-							TimeZone tz = TimeZone.getTimeZone("UTC");
-							DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-							df.setTimeZone(tz);
-							String fileURL = file.getAbsolutePath();
-							if (prefixFromReplace != null && prefixToReplace != null)
-								fileURL = fileURL.replace(prefixFromReplace, prefixToReplace);
-							if (typeInId)
-								attributes.put("id", type + fileURL);
-							else
-								attributes.put("id", fileURL);
-							attributes.put("date", df.format(file.lastModified()));
-							attributes.put("title", file.getName());
-							attributes.put("type", type);
-							if (fileContentField != null)
-								attributes.put(fileContentField, content);
-							if (imagesExtensions.contains(extension))
-								attributes.put("image", fileURL);
-							if (fileSizeField != null)
-								attributes.put(fileSizeField, file.length());
-							attributes.put("url", fileURL);
-							turSNJobItem.setAttributes(attributes);
+								turSNJobItems.add(turSNJobItem);
 
-							turSNJobItems.add(turSNJobItem);
+								chunkTotal++;
+								chunkCurrent++;
+								if (chunkCurrent == chunk) {
+									sendServer(turSNJobItems, chunkTotal);
+									turSNJobItems = new TurSNJobItems();
+									chunkCurrent = 0;
 
-							chunkTotal++;
-							chunkCurrent++;
-							if (chunkCurrent == chunk) {
-								sendServer(turSNJobItems, chunkTotal);
-								turSNJobItems = new TurSNJobItems();
-								chunkCurrent = 0;
-
+								}
 							}
 							return FileVisitResult.CONTINUE;
 						}
@@ -190,14 +197,9 @@ public class TurFSImportTool {
 	}
 
 	private static String cleanTextContent(String text) {
-		// strips off all non-ASCII characters
-		text = text.replaceAll("[^\\x00-\\x7F]", "");
-
-		// erases all the ASCII control characters
-		text = text.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ");
-
-		// removes non-printable characters from Unicode
-		text = text.replaceAll("\\p{C}", "");
+		text = text.replaceAll("[\r\n\t]", " ");
+		text = text.replaceAll("[^\\p{L}&&[^0-9A-Za-z]&&[^\\p{javaSpaceChar}]&&[^\\p{Punct}]]", "").replaceAll("_{2,}",
+				"");
 
 		return text.trim();
 	}
@@ -278,6 +280,7 @@ public class TurFSImportTool {
 	private String extractTextFromFile(File file) {
 		TurFileAttributes turFileAttributes = readFile(file.getAbsolutePath());
 		return cleanTextContent(turFileAttributes.getContent());
+		// return turFileAttributes.getContent();
 	}
 
 	private String extractTextFromImage(File file)
@@ -327,5 +330,6 @@ public class TurFSImportTool {
 			e.printStackTrace();
 		}
 		return cleanTextContent(strB.toString());
+		// return strB.toString();
 	}
 }
