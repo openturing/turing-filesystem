@@ -204,7 +204,8 @@ public class TurFSImportTool {
 		text = text.replaceAll("[\r\n\t]", " ");
 		text = text.replaceAll("[^\\p{L}&&[^0-9A-Za-z]&&[^\\p{javaSpaceChar}]&&[^\\p{Punct}]]", "").replaceAll("_{2,}",
 				"");
-
+		// Remove 2 or more spaces
+		text = text.trim().replaceAll(" +", " ");
 		return text.trim();
 	}
 
