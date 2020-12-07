@@ -28,5 +28,5 @@ $ java -jar build/libs/turing-filesystem.jar <PARAMETERS>
 ```
 ## Example
 ```shell
-$ java -jar build\libs\turing-filesystem.jar --server http://localhost:2700 --nlp b2b4a1ff-3ea3-4cec-aa95-f54d0f5f3ff8 --source-dir /appl/myfiles --output-dir /appl/results
+$ java -jar build/libs/turing-filesystem.jar --server http://localhost:2700 --nlp b2b4a1ff-3ea3-4cec-aa95-f54d0f5f3ff8 --source-dir /appl/myfiles --output-dir /appl/results
 ```
