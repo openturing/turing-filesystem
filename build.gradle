@@ -13,7 +13,7 @@ apply plugin: 'eclipse'
 apply plugin: 'com.github.johnrengelman.shadow'
 
 group = 'com.viglet.turing.filesystem'
-version = '1.0-SNAPSHOT'
+version = '0.3.1'
 
 description = "turing-filesystem"
 
@@ -33,8 +33,9 @@ jar {
 }
 
 shadowJar {
-    baseName = 'turing-filesystem'
+    baseName = 'turing'
     classifier = null
+    version = 'filesystem'
 }
 repositories {   
      mavenCentral()
