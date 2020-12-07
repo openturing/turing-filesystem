@@ -26,13 +26,15 @@ tasks.withType(JavaCompile) {
 
 jar {
     baseName = 'turing-filesystem'
-    version =  '0.1.0'
+    version =  '0.3.1'
+    manifest {
+        attributes 'Main-Class': 'com.viglet.turing.tool.filesystem.TurFSImportTool'
+    }
 }
 
 shadowJar {
-   baseName = 'turing-filesystem'
-   classifier = null
-   version = 'fat-jar'
+    baseName = 'turing-filesystem'
+    classifier = null
 }
 repositories {   
      mavenCentral()
