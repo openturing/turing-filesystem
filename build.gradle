@@ -13,7 +13,7 @@ apply plugin: 'eclipse'
 apply plugin: 'com.github.johnrengelman.shadow'
 
 group = 'com.viglet.turing.filesystem'
-version = '0.3.1'
+version = '0.3.3'
 
 description = "turing-filesystem"
 
